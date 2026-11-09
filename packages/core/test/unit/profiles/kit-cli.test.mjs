@@ -49,11 +49,15 @@ test("library add/list/mkdir/mv/rm drive the store and report which kits a delet
   } finally { t.done(); }
 });
 
-test("library add points at the clone-and-add path for GitHub sources instead of failing obscurely", async () => {
+test("library add/update: a source that is neither a path nor a repo is explained, and update says when nothing came from git", async () => {
   const t = harness();
   try {
-    await assert.rejects(t.run("library", "add", "google/elephant-goldfish-model"), /not built yet.*Clone it/s);
-    await assert.rejects(t.run("library", "update"), /not built yet/);
+    await assert.rejects(t.run("library", "add", "nothing-here"), /Not found: nothing-here/);
+    await assert.rejects(t.run("library", "edit", "skills/x"), /not built yet/);
+    t.lines.length = 0;
+    await t.run("library", "update");
+    assert.deepEqual(t.lines, ["No plugins were added from git, so there is nothing to update."]);
+    await assert.rejects(t.run("library", "update", "plugins/ghost"), /no plugins\/ghost/);
   } finally { t.done(); }
 });
 

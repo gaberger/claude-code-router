@@ -6,9 +6,10 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { addToLibraryFromSource, updateLibraryPlugins } from "@ccr/core/profiles/kits/library-git";
 import { readPermissions, runPermissions, permissionsUsage } from "@ccr/core/profiles/kits/permissions";
 import {
-  addToLibrary, createKit, dropEntries, kitsDir, listKits, makeLibraryFolder, moveInLibrary, planLoads,
+  createKit, dropEntries, kitsDir, listKits, makeLibraryFolder, moveInLibrary, planLoads,
   readUses, removeFromLibrary, removeKit, renameLibraryFolder, resolveEntry, scanLibrary, useEntries,
   usesEntries, libraryKinds, type LibraryKind, type LoadsKit, type LoadsPlan
 } from "@ccr/core/profiles/kits/kit-store";
@@ -47,7 +48,8 @@ export async function runKitCli(argv: string[], host: KitCliHost): Promise<void>
 export function kitCliHelp(): string {
   return [
     "ccr library list [skills|agents|plugins]",
-    "            add <path> [--in <folder>]    a skill folder, an agent .md file, or a plugin folder",
+    "            add <path|owner/repo|git URL> [--in <folder>]   a skill folder, agent .md file, plugin folder, or a plugin repo",
+    "            update [plugins/<name>]       git pull the plugins added from git",
     "            mkdir skills/<folder> | mv <entry> <folder|/> | rename skills/<folder>/ <name>",
     "            rm <entry> | show <entry>",
     "ccr kit     list | new <k> | rm <k> | show <k> | edit <k>",
@@ -84,10 +86,7 @@ async function runLibrary(args: string[], host: KitCliHost): Promise<void> {
       const positional = inIndex >= 0 ? rest.filter((_, index) => index !== inIndex && index !== inIndex + 1) : rest;
       const source = positional[0];
       if (!source) throw new Error("Usage: ccr library add <path> [--in <folder>]");
-      if (/^[\w.-]+\/[\w.-]+$/.test(source) && !existsSync(source)) {
-        throw new Error("Adding from GitHub or a git URL is not built yet. Clone it and add the folder: ccr library add <path>");
-      }
-      out(`Added ${addToLibrary(root, source, folder ? { folder } : {})}`);
+      out(`Added ${addToLibraryFromSource(root, source, folder ? { folder } : {})}`);
       return;
     }
     case "mkdir": {
@@ -122,9 +121,19 @@ async function runLibrary(args: string[], host: KitCliHost): Promise<void> {
       for (const item of found.items) out(`${item.kind}/${item.folder ? `${item.folder}/` : ""}${item.name}  ${item.dir}`);
       return;
     }
+    case "update": {
+      const result = updateLibraryPlugins(root, rest[0]);
+      for (const entry of result.updated) out(`Updated ${entry}`);
+      for (const entry of result.unchanged) out(`Up to date ${entry}`);
+      for (const failure of result.failed) out(`Failed ${failure.entry}: ${failure.message}`);
+      if (result.updated.length + result.unchanged.length + result.failed.length === 0) {
+        out("No plugins were added from git, so there is nothing to update.");
+      }
+      if (result.failed.length > 0) throw new Error(`${result.failed.length} plugin${result.failed.length === 1 ? "" : "s"} failed to update.`);
+      return;
+    }
     case "edit":
-    case "update":
-      throw new Error(`ccr library ${action} is not built yet.`);
+      throw new Error("ccr library edit is not built yet.");
     default:
       throw new Error(`Usage: ccr library list | add | mkdir | mv | rename | rm | show\n\n${kitCliHelp()}`);
   }
