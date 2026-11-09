@@ -19,6 +19,7 @@ import {
 } from "@ccr/core/agents/claude-code/environment";
 import { writeCodexCompatibleAppModelCatalog } from "@ccr/core/agents/codex/app-launch";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
+import { kitLaunchArgsFileEnv, writeKitLaunchArgs } from "@ccr/core/profiles/kits/launch-args";
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
 import {
   isManagedKiloConfigContent,
@@ -1564,9 +1565,11 @@ function writeClaudeCodeWrapper(
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
   const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
   const file = path.join(binDir, claudeCodeWrapperFilename(profile));
+  // Kits are rebuilt whenever the profile is applied; the runtime reads the flags file at launch.
+  const kitArgsFile = writeKitLaunchArgs(profile.id || profile.name || profile.agent, profile.kits).file;
   const content = process.platform === "win32"
-    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, auth, mcpConfigFile)
-    : claudeCodeWrapperShellScript(config, profile, runtimeFile, auth, mcpConfigFile);
+    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, auth, mcpConfigFile, kitArgsFile)
+    : claudeCodeWrapperShellScript(config, profile, runtimeFile, auth, mcpConfigFile, kitArgsFile);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
     changed: writeResult.changed || runtimeResult.changed,
@@ -1586,7 +1589,8 @@ function claudeCodeWrapperShellScript(
   profile: ProfileConfig,
   runtimeFile: string,
   auth: { remoteSyncApiKeyFile: string; wifIdentityTokenFile?: string },
-  mcpConfigFile: string | undefined
+  mcpConfigFile: string | undefined,
+  kitArgsFile?: string
 ): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
@@ -1602,6 +1606,7 @@ function claudeCodeWrapperShellScript(
     ...claudeCodeFirstPartyProviderEnvKeys.map((key) => `unset ${key}`),
     ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir, auth.wifIdentityTokenFile)),
     ...shellEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
+    ...(kitArgsFile ? shellEnvExports({ [kitLaunchArgsFileEnv]: kitArgsFile }) : []),
     ...shellEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
     "export CCR_PROFILE_SURFACE",
@@ -1625,7 +1630,8 @@ function claudeCodeWrapperCmdScript(
   profile: ProfileConfig,
   runtimeFile: string,
   auth: { remoteSyncApiKeyFile: string; wifIdentityTokenFile?: string },
-  mcpConfigFile: string | undefined
+  mcpConfigFile: string | undefined,
+  kitArgsFile?: string
 ): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
@@ -1641,6 +1647,7 @@ function claudeCodeWrapperCmdScript(
     ...claudeCodeFirstPartyProviderEnvKeys.map((key) => cmdSetLine(key, "")),
     ...cmdEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir, auth.wifIdentityTokenFile)),
     ...cmdEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
+    ...(kitArgsFile ? cmdEnvExports({ [kitLaunchArgsFileEnv]: kitArgsFile }) : []),
     ...cmdEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `if not defined CCR_PROFILE_SURFACE ${cmdSetLine("CCR_PROFILE_SURFACE", surface)}`,
     ...botEnvExports,

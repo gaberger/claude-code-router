@@ -7,6 +7,7 @@ import {
   Gauge,
   KeyRound,
   Layers3,
+  Library,
   Network,
   Route,
   UserRound,
@@ -72,7 +73,7 @@ import trayCyanIconUrl from "@/assets/tray-cyan.png";
 import trayOrangeIconUrl from "@/assets/tray-orange.png";
 import trayVioletIconUrl from "@/assets/tray-violet.png";
 
-type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
+type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "kits" | "extensions";
 type NavigationId = ViewId;
 type OnboardingStepId = "provider" | "profile" | "enter";
 type ProviderAccountDraftMode = "standard" | "http-json" | "browser" | "raw";
@@ -416,6 +417,7 @@ export const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Gauge, id: "overview" },
   { icon: Layers3, id: "providers" },
   { icon: UserRound, id: "profile" },
+  { icon: Library, id: "kits" },
   { icon: Route, id: "routing" },
   { icon: Boxes, id: "virtual-models" },
   { icon: KeyRound, id: "api-keys" },

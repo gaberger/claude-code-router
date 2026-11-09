@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo } from "react";
 import { translateErrorMessage } from "@ccr/core/contracts/i18n";
 
-type NavigationId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
+type NavigationId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "kits" | "extensions";
 type ResolvedLanguage = "en" | "zh";
 
 export type AppCopy = {
@@ -111,6 +111,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       onboarding: "Onboarding",
       "api-keys": "API Keys",
       extensions: "Extensions",
+      kits: "Kits",
       logs: "Logs",
       networking: "Networking",
       observability: "Observability",
@@ -742,6 +743,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       onboarding: "上手引导",
       "api-keys": "API 密钥",
       extensions: "扩展",
+      kits: "技能套件",
       logs: "日志",
       networking: "网络",
       observability: "观测",

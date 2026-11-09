@@ -813,6 +813,32 @@ test("Claude Code wrapper leaves the scoped profile model as an environment defa
   assert.equal(observed.env.CCR_CLAUDE_CODE_MODEL, "Fusion/kimisearch");
 });
 
+test("Claude Code wrapper puts the profile's kit flags before the user's arguments, but not for --version", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+  const kitArgsFile = path.join(dir, "kit-args.json");
+  writeFileSync(kitArgsFile, JSON.stringify(["--plugin-dir", "/kits/net", "--append-system-prompt-file", "/kits/i.md"]));
+  const env = {
+    ...process.env,
+    CCR_CLAUDE_CODE_KIT_ARGS_FILE: kitArgsFile,
+    CCR_CLAUDE_CODE_WRAPPER: "1",
+    CCR_FAKE_CLAUDE_OUT: outputFile,
+    CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+    CCR_REMOTE_SYNC_ENABLED: "0"
+  };
+
+  execFileSync(process.execPath, [runtimeFile, "-p", "hi"], { env, stdio: "pipe" });
+  assert.deepEqual(JSON.parse(readFileSync(outputFile, "utf8")).argv, ["--plugin-dir", "/kits/net", "--append-system-prompt-file", "/kits/i.md", "-p", "hi"]);
+
+  execFileSync(process.execPath, [runtimeFile, "--version"], { env, stdio: "pipe" });
+  assert.deepEqual(JSON.parse(readFileSync(outputFile, "utf8")).argv, ["--version"]);
+
+  // An unreadable flags file must not stop Claude Code from starting.
+  execFileSync(process.execPath, [runtimeFile, "-p", "hi"], { env: { ...env, CCR_CLAUDE_CODE_KIT_ARGS_FILE: path.join(dir, "missing.json") }, stdio: "pipe" });
+  assert.deepEqual(JSON.parse(readFileSync(outputFile, "utf8")).argv, ["-p", "hi"]);
+});
+
 test("Claude Code wrapper preserves an explicit model argument", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
   const runtimeFile = writeRuntimeScript(dir);

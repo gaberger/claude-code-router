@@ -1,3 +1,4 @@
+import { ProfileKitsField } from "./kits";
 import { useDraftClose } from "./unsaved-changes";
 import {
   AddProfileDraft, AddRoutingRuleDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
@@ -887,6 +888,7 @@ export function AddProfileForm({
               />
               {validation.defaultModel ? <ProfileFieldHint>{t(validation.defaultModel)}</ProfileFieldHint> : null}
             </Field>
+            <ProfileKitsField onChange={(kits) => onChange({ kits })} value={draft.kits} />
             <Field label={t("Fable model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={t("Keep Claude Code default")}

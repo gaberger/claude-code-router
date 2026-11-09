@@ -9,6 +9,7 @@ import {
   useAppText, ViewMotionShell, viewUsesInternalScroll
 } from "../shared/index";
 import { ApiKeysView } from "./api-keys";
+import { KitsView } from "./kits";
 import { AgentAnalysisView, OverviewView } from "./dashboard";
 import { ExtensionsView } from "./extensions";
 import { LogsView, NetworkingView } from "./network-logs";
@@ -35,7 +36,7 @@ const sidebarNavigationGroupDefinitions: Array<{
   label: string;
 }> = [
   { id: "workspace", itemIds: ["overview"], label: "Workspace" },
-  { id: "setup", itemIds: ["providers", "profile", "routing"], label: "Setup" },
+  { id: "setup", itemIds: ["providers", "profile", "kits", "routing"], label: "Setup" },
   { id: "monitor", itemIds: ["logs", "observability"], label: "Monitor" },
   { id: "advanced", itemIds: ["virtual-models", "models", "api-keys", "extensions"], label: "Advanced" }
 ];
@@ -56,6 +57,7 @@ export function groupSidebarNavigation(visibleNavigation: MainNavigationItem[]):
 type MainViewProps = {
   apiKeys: ComponentProps<typeof ApiKeysView>;
   extensions: ComponentProps<typeof ExtensionsView>;
+  kits: ComponentProps<typeof KitsView>;
   logs: ComponentProps<typeof LogsView>;
   models: ComponentProps<typeof ModelsView>;
   networking: ComponentProps<typeof NetworkingView>;
@@ -452,6 +454,7 @@ function MainViewSwitch({
         {activeView === "observability" && agentAnalysisEnabled ? <AgentAnalysisView {...viewProps.observability} /> : null}
         {activeView === "api-keys" ? <ApiKeysView {...viewProps.apiKeys} /> : null}
         {activeView === "profile" ? <ProfileView {...viewProps.profile} /> : null}
+        {activeView === "kits" ? <KitsView {...viewProps.kits} /> : null}
         {activeView === "networking" && networkCaptureEnabled ? <NetworkingView {...viewProps.networking} /> : null}
         {activeView === "logs" ? <LogsView {...viewProps.logs} /> : null}
         {activeView === "providers" ? <ProvidersView {...viewProps.providers} /> : null}

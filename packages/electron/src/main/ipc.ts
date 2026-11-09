@@ -33,6 +33,8 @@ import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/ru
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "@ccr/core/providers/account-service";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
 import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
+import { applyKitsAction, getKitsState, type KitsAction } from "@ccr/core/profiles/kits/kit-service";
+import { listAwsProfiles } from "@ccr/core/providers/aws-profiles";
 import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
 import { isLaunchAtLoginSupported, syncLaunchAtLogin } from "./launch-at-login";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
@@ -101,6 +103,9 @@ ipcMain.handle(IPC_CHANNELS.appRenderHtmlPng, async (event, request: AppRenderHt
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
 ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => loadOnboardingFinished());
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
+ipcMain.handle(IPC_CHANNELS.appGetAwsProfiles, () => listAwsProfiles());
+ipcMain.handle(IPC_CHANNELS.appGetKitsState, () => getKitsState());
+ipcMain.handle(IPC_CHANNELS.appApplyKitsAction, (_event, action: KitsAction) => applyKitsAction(action));
 ipcMain.handle(IPC_CHANNELS.appGetLocalAgentProviderCandidates, () => getLocalAgentProviderCandidates());
 ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
   return getProfileOpenCommand(await loadAppConfig(), request, {

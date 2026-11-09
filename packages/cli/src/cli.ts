@@ -7,10 +7,13 @@ import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { codexDesktopAppName, launchZcodeAppProfile } from "@ccr/core/agents/codex/app-launch";
-import { loadAppConfig } from "@ccr/core/config/config";
+import { loadAppConfig, saveAppConfig } from "@ccr/core/config/config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
 import { refreshModelCatalog, resolveModelCatalogPath } from "@ccr/core/models/catalog-file";
+import { isKitCliCommand, kitCliHelp, runKitCli, type KitCliHost } from "@ccr/core/profiles/kits/kit-cli";
+import { listKits } from "@ccr/core/profiles/kits/kit-store";
+import { kitStoreRoot } from "@ccr/core/profiles/kits/launch-args";
 import { applyProfileConfig, applyProfileRuntimeConfig } from "@ccr/core/profiles/service";
 import { ensureProfileGateway, ProfileGatewayUnavailableError } from "@ccr/core/profiles/launch-service";
 import { buildProfileLaunchPlan, defaultProfileOpenSurface, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface, shouldAutoStartProfileGateway } from "@ccr/core/profiles/launch-core";
@@ -23,6 +26,8 @@ type ProfileCliOptions = {
   agentArgs: string[];
   command: "profile";
   help: boolean;
+  /** `+kit` words: replace the profile's kits for this run only. */
+  kits?: string[];
   profileRef: string;
   surface?: ProfileOpenSurface;
 };
@@ -72,6 +77,10 @@ const defaultCliCommandName = "ccr";
 const prepareProfileOnlyEnv = "CCR_CLI_PREPARE_PROFILE_ONLY";
 
 async function main(): Promise<void> {
+  if (isKitCliCommand(process.argv[2])) {
+    await runKitCommand(process.argv.slice(2));
+    return;
+  }
   const options = parseArgs(process.argv.slice(2));
   if (!options.help && options.command !== "stop") await refreshModelCatalog();
   if (options.command === "start") {
@@ -123,8 +132,20 @@ async function main(): Promise<void> {
   const configDir = CONFIGDIR;
   const config = await loadAppConfig();
   assertAvailableGatewayModels(config);
-  await applyProfileConfig(config);
   const profile = findProfileForOpen(config, profileOptions.profileRef);
+  if (profileOptions.kits && profileOptions.kits.length > 0) {
+    if (profile.agent !== "claude-code") {
+      throw new Error("+kit applies to Claude Code profiles.");
+    }
+    const known = listKits(kitStoreRoot());
+    const unknown = profileOptions.kits.filter((kit) => !known.includes(kit));
+    if (unknown.length > 0) {
+      throw new Error(`No kit named ${unknown.join(", ")}. See: ccr kit list`);
+    }
+    // For this run only: the config is not saved, so the profile keeps its own kits.
+    profile.kits = [...new Set(profileOptions.kits)];
+  }
+  await applyProfileConfig(config);
   const surface = profileOptions.surface ?? defaultProfileOpenSurface(profile);
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
   if (profile.agent === "zcode" && profileOptions.agentArgs.length > 0) {
@@ -288,9 +309,51 @@ function parseArgs(args: string[]): CliOptions {
       options.profileRef = arg;
       continue;
     }
+    if (arg.startsWith("+") && arg.length > 1) {
+      (options.kits ??= []).push(arg.slice(1));
+      continue;
+    }
     options.agentArgs.push(arg);
   }
   return options;
+}
+
+/** `ccr library|kit|loads`: local commands over the kit store; no gateway, no network. */
+async function runKitCommand(argv: string[]): Promise<void> {
+  if (argv.includes("--help") || argv.includes("-h") || argv.length === 1) {
+    process.stdout.write(`${kitCliHelp()}\n`);
+    return;
+  }
+  const needsConfig = argv[0] === "loads" || (argv[0] === "kit" && (argv[1] === "attach" || argv[1] === "detach"));
+  const config = needsConfig ? await loadAppConfig() : undefined;
+  const claudeProfile = (ref: string): ProfileConfig => {
+    if (!config) throw new Error("Profiles are not loaded.");
+    const profile = findProfileForOpen(config, ref);
+    if (profile.agent !== "claude-code") {
+      throw new Error(`${profile.name} is not a Claude Code profile; kits apply to Claude Code.`);
+    }
+    return profile;
+  };
+  const host: KitCliHost = {
+    editFile: (file) => new Promise((resolve, reject) => {
+      const editor = process.env.VISUAL || process.env.EDITOR || "vi";
+      const child = spawn(editor, [file], { shell: true, stdio: "inherit" });
+      child.on("error", reject);
+      child.on("exit", () => resolve());
+    }),
+    out: (line) => process.stdout.write(`${line}\n`),
+    profileKits: (ref) => claudeProfile(ref).kits ?? [],
+    root: kitStoreRoot(),
+    setProfileKits: async (ref, kits) => {
+      claudeProfile(ref).kits = kits.length > 0 ? kits : undefined;
+      await saveAppConfig(config!);
+    },
+    soleProfile: () => {
+      const profiles = (config?.profile.profiles ?? []).filter((profile) => profile.enabled && profile.agent === "claude-code");
+      return profiles.length === 1 ? profiles[0]!.name : undefined;
+    }
+  };
+  await runKitCli(argv, host);
 }
 
 function profileAppName(profile: Pick<ProfileConfig, "agent">): string {
@@ -589,7 +652,8 @@ function printHelp(exitCode: number): void {
     `  ${command} ui [--daemon] [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
     `  ${command} serve [--daemon] [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
     `  ${command} stop`,
-    `  ${command} <profile-name-or-id> [cli|app] [-- <agent args>]`,
+    `  ${command} <profile-name-or-id> [+<kit>…] [cli|app] [-- <agent args>]`,
+    `  ${command} library|kit|loads …   skills, agents and kits for Claude Code (${command} kit --help)`,
     "",
     "Notes:",
     `  ${command} web is an alias for ${command} serve.`,

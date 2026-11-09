@@ -13,7 +13,7 @@ import { mediaToolsMcpServer } from "@ccr/core/mcp/grok-media-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
-import { endpoint, gatewayRuntimeSupportsRouterPlugin, resolveLocalAgentAuthProviderHookEntry, resolveRouterPluginEntry, resolveUndiciProxyAgentModule, resolveUpstreamHeaderSanitizerEntry, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
+import { endpoint, gatewayRuntimeSupportsRouterPlugin, resolveBedrockProviderHookEntry, resolveLocalAgentAuthProviderHookEntry, resolveRouterPluginEntry, resolveUndiciProxyAgentModule, resolveUpstreamHeaderSanitizerEntry, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncHeader, billingUsageSyncPath, claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
@@ -24,6 +24,7 @@ import { isOpenCodePublicFreeTierPlugin } from "@ccr/core/agents/local-providers
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 
 const upstreamHeaderSanitizerPluginKey = "ccr-upstream-header-sanitizer";
+const bedrockProviderHookPluginKey = "ccr-bedrock-provider-hooks";
 const localAgentAuthProviderHookPluginKey = "ccr-local-agent-auth-provider-hooks";
 const internalGatewayPluginKeys = [
   ccrRouterPluginKey,
@@ -104,6 +105,7 @@ export async function compileCoreGatewayConfig(
   ];
   const routerPlugin = routerPluginConfig(config, options, coreAuthToken);
   const localAgentAuthProviderHookPlugin = localAgentAuthProviderHookPluginConfig(providerPluginsWithCapabilityAliases);
+  const bedrockProviderHookPlugin = bedrockProviderHookPluginConfig(enabledProviders);
   const pluginAgentConfig = isRecord(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
   const pluginMcpServers = Array.isArray(pluginAgentConfig.mcpServers) ? pluginAgentConfig.mcpServers : [];
   const externalMcpServers = [
@@ -162,6 +164,7 @@ export async function compileCoreGatewayConfig(
       ...(routerPlugin ? [routerPlugin] : []),
       ...configuredGatewayPlugins,
       ...(localAgentAuthProviderHookPlugin ? [localAgentAuthProviderHookPlugin] : []),
+      ...(bedrockProviderHookPlugin ? [bedrockProviderHookPlugin] : []),
       {
         enabled: true,
         key: upstreamHeaderSanitizerPluginKey,
@@ -217,6 +220,30 @@ function coreGatewayStaticAuthKeys(
     ...(config.APIKEYS ?? []).map((apiKey) => apiKey.key),
     config.APIKEY
   ].map((key) => key?.trim()).filter((key): key is string => Boolean(key)));
+}
+
+function bedrockProviderHookPluginConfig(providers: GatewayProviderConfig[]): Record<string, unknown> | undefined {
+  const bedrockProviders: Record<string, { profile?: string; region: string }> = {};
+  for (const provider of providers) {
+    const region = provider.bedrock?.region?.trim();
+    if (region) {
+      const profile = provider.bedrock?.profile?.trim();
+      // Key by every name the gateway will see (capability and credential variants are
+      // renamed by toCoreGatewayProviders), otherwise the hook silently never matches.
+      for (const emitted of toCoreGatewayProviders(provider)) {
+        bedrockProviders[emitted.name] = { region, ...(profile ? { profile } : {}) };
+      }
+    }
+  }
+  if (Object.keys(bedrockProviders).length === 0) {
+    return undefined;
+  }
+  return {
+    config: { providers: bedrockProviders },
+    enabled: true,
+    key: bedrockProviderHookPluginKey,
+    modulePath: resolveBedrockProviderHookEntry()
+  };
 }
 
 function localAgentAuthProviderHookPluginConfig(providerPlugins: unknown[]): Record<string, unknown> | undefined {

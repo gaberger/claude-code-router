@@ -157,6 +157,20 @@ export type GatewayMediaProtocol =
 
 export type GatewayProviderCapabilityProtocol = GatewayProviderProtocol | GatewayMediaProtocol;
 
+export type AwsProfileKind = "sso" | "role" | "process" | "web-identity" | "static" | "other";
+
+/** A named AWS profile discovered on this machine. Never carries secret values. */
+export type AwsProfileInfo = {
+  kind: AwsProfileKind;
+  name: string;
+  region?: string;
+};
+
+export type ProviderBedrockConfig = {
+  profile?: string;
+  region: string;
+};
+
 export type GatewayProviderConfig = {
   account?: ProviderAccountConfig;
   api_base_url?: string;
@@ -166,6 +180,12 @@ export type GatewayProviderConfig = {
   baseUrl?: string;
   baseurl?: string;
   billing?: unknown;
+  /**
+   * Claude on Amazon Bedrock. Requests are SigV4-signed with credentials from the
+   * named AWS profile (default credential chain when `profile` is omitted).
+   * Use with `type: "anthropic_messages"`; no API key is needed.
+   */
+  bedrock?: ProviderBedrockConfig;
   capabilities?: GatewayProviderCapability[];
   credentials?: ProviderCredentialConfig[];
   extraBody?: unknown;
@@ -1534,6 +1554,8 @@ export type ProfileConfig = {
   fableModel?: string;
   haikuModel?: string;
   id: string;
+  /** Kits (named sets of skills, agents, plugins and instructions) every launch of this profile loads. */
+  kits?: string[];
   managedCompact?: boolean;
   model: string;
   name: string;

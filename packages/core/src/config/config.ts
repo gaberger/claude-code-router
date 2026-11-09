@@ -19,6 +19,7 @@ import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
+import { isValidKitName } from "@ccr/core/profiles/kits/kit-store";
 import { isDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 import type {
   AppConfig,
@@ -527,6 +528,10 @@ export function normalizeProviderPresetCapabilitiesForTest(
   provider: GatewayProviderConfig
 ): GatewayProviderConfig {
   return normalizeProviderPresetCapabilities(provider);
+}
+
+export function parseProfilesForTest(value: unknown): ProfileConfig[] | undefined {
+  return parseProfiles(value);
 }
 
 export function parseProvidersForTest(value: unknown): GatewayProviderConfig[] | undefined {
@@ -1411,6 +1416,19 @@ function parseTrayComponentVariants(value: unknown): TrayComponentVariants | und
   };
 }
 
+function parseProviderBedrock(value: unknown): GatewayProviderConfig["bedrock"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const region = readString(record.region)?.trim();
+  if (!region) {
+    return undefined;
+  }
+  const profile = readString(record.profile)?.trim();
+  return { region, ...(profile ? { profile } : {}) };
+}
+
 function parseEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T;
 function parseEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: undefined): T | undefined;
 function parseEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T | undefined): T | undefined {
@@ -1448,6 +1466,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         baseUrl: readString(item.baseUrl),
         baseurl: readString(item.baseurl),
         billing: item.billing,
+        bedrock: parseProviderBedrock(item.bedrock),
         capabilities: parseProviderCapabilities(item.capabilities)
           ?? parseProviderProtocolCapability(item),
         credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
@@ -3651,6 +3670,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const routing = parseProfileRouting(item.routing ?? item.route, agent);
 
       if (agent === "claude-code") {
+        const kits = parseProfileKits(item.kits);
         const appPath = readProfileAppPath(item, agent);
         const claudeSettings = parseUnknownRecord(item.claudeSettings ?? item.claude_settings);
         return {
@@ -3664,6 +3684,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           fableModel: readString(item.fableModel) || readString(item.defaultFableModel) || "",
           haikuModel: readString(item.haikuModel) || readString(item.defaultHaikuModel) || readString(item.smallFastModel) || readString(item.smallModel) || "",
           id,
+          ...(kits.length > 0 ? { kits } : {}),
           ...(managedCompact !== undefined ? { managedCompact } : {}),
           ...(availableModels ? { availableModels } : {}),
           model,
@@ -3742,6 +3763,12 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       };
     })
     .filter((item): item is ProfileConfig => Boolean(item));
+}
+
+function parseProfileKits(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const kits = value.map((item) => readString(item)).filter((name): name is string => Boolean(name) && isValidKitName(name as string));
+  return [...new Set(kits)];
 }
 
 function parseProfileRouting(value: unknown, _agent: ProfileConfig["agent"]): ProfileRoutingConfig | undefined {

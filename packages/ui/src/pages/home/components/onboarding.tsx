@@ -102,9 +102,11 @@ export function OnboardingView({
   const localAgentProviderImport = providerDraft.providerPlugins.length > 0;
   const providerIdentityReady = Boolean(findProviderPreset(providerDraft.presetId) || providerDraft.baseUrl.trim());
   const providerCredentialReady = localAgentProviderImport || Boolean(
-    providerDraft.credentialMode === "pool"
-      ? providerDraftHasReadyCredentialPool(providerDraft)
-      : providerDraft.apiKey.trim()
+    providerDraft.credentialMode === "aws"
+      ? true
+      : providerDraft.credentialMode === "pool"
+        ? providerDraftHasReadyCredentialPool(providerDraft)
+        : providerDraft.apiKey.trim()
   );
   const providerCheckModels = mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText));
   const providerModelsReady = providerCheckModels.length > 0;

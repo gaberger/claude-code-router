@@ -147,7 +147,11 @@ function toCoreGatewayProvider(
     normalizeProviderProtocol(provider.provider) ??
     inferProtocol(provider);
   const baseurl = normalizeProviderRuntimeBaseUrl(capability?.baseUrl ?? readBaseUrl(provider), type);
-  const apikey = credential ? providerCredentialApiKey(credential) : provider.apikey || provider.apiKey || provider.api_key;
+  // Bedrock auth is a SigV4 signature added by the bedrock gateway hook, but the gateway
+  // still expects some key on an anthropic_messages provider. The hook discards it.
+  const apikey = provider.bedrock
+    ? "aws-sigv4-managed-by-ccr"
+    : credential ? providerCredentialApiKey(credential) : provider.apikey || provider.apiKey || provider.api_key;
 
   if (!provider.name || provider.models.length === 0) {
     return undefined;

@@ -35,6 +35,7 @@ import {
 } from "./shared/index";
 import { preserveEqualPollingSnapshot, startVisiblePolling } from "./shared/polling";
 import { configsEqual, createConfigSaveQueue, mergeSavedApiKeys, reconcileSavedConfig } from "./shared/config-persistence";
+import { bedrockDefaultRegion, bedrockRuntimeBaseUrl } from "@ccr/core/providers/presets/bedrock/index";
 import { renameProviderReferences } from "./shared/provider-references";
 import {
   AppDialogStack, FeedbackStack, LightToast, MainLayout, OnboardingLayout, PersistenceFeedback, shouldCheckForUpdateOnOpen
@@ -1452,7 +1453,9 @@ function App() {
         }
       };
     }
-    if (providerDraft.providerPlugins.length > 0) {
+    // Local-agent logins and Bedrock authenticate outside the API-key flow, so an
+    // unauthenticated endpoint probe can only fail and would just add loading state.
+    if (providerDraft.providerPlugins.length > 0 || providerDraft.credentialMode === "aws") {
       providerProbeRequestId.current += 1;
       setProviderProbe(undefined);
       setProviderProbeError("");
@@ -1728,6 +1731,8 @@ function App() {
       setProviderProbeError(translateAppErrorMessage(copy, accountConfig));
       return false;
     }
+    const awsMode = providerDraft.credentialMode === "aws";
+    const awsRegion = providerDraft.awsRegion.trim() || bedrockDefaultRegion;
     const useCredentialPool = providerDraft.credentialMode === "pool";
     const primaryApiKey = useCredentialPool ? "" : providerDraft.apiKey.trim();
     const credentials = useCredentialPool ? providerCredentialsFromDraft(providerDraft) : [];
@@ -1835,11 +1840,14 @@ function App() {
     });
     const provider: GatewayProviderConfig = {
       ...providerManualFieldsForSave(existingProvider),
-      api_base_url: normalizeProviderBaseUrl(baseUrl),
-      api_key: primaryApiKey,
-      autoFetchModels: providerDraft.autoFetchModels || undefined,
+      api_base_url: normalizeProviderBaseUrl(awsMode ? bedrockRuntimeBaseUrl(awsRegion) : baseUrl),
+      api_key: awsMode ? "" : primaryApiKey,
+      autoFetchModels: awsMode ? undefined : providerDraft.autoFetchModels || undefined,
+      bedrock: awsMode
+        ? { region: awsRegion, ...(providerDraft.awsProfile.trim() ? { profile: providerDraft.awsProfile.trim() } : {}) }
+        : undefined,
       autoFetchKnownModels,
-      capabilities: capabilities.length > 0 ? capabilities : undefined,
+      capabilities: !awsMode && capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
       extraBody,
       extraHeaders,
@@ -3251,6 +3259,7 @@ function App() {
               updateStatus={updateDialogStatus}
               visibleNavigation={visibleNavigation}
               viewProps={{
+                kits: { notify: showToast },
                 apiKeys: {
                   addApiKey: openAddApiKeyDialog,
                   apiKeys,

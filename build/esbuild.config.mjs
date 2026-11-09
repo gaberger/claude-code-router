@@ -70,6 +70,7 @@ export const requestLogBodyWorkerOutput = path.join(rendererAssetsDir, "log-body
 export const requestLogBodyWorkerInput = path.join(rendererRoot, "pages", "home", "shared", "log-body.worker.ts");
 export const electronUndiciProxyAgentInput = path.join(coreSourceRoot, "proxy", "undici-proxy-agent.ts");
 export const localAgentAuthProviderHookInput = path.join(coreSourceRoot, "gateway", "core-runtime", "local-agent-auth-provider-hook.ts");
+export const bedrockProviderHookInput = path.join(coreSourceRoot, "gateway", "core-runtime", "bedrock-provider-hook.ts");
 export const routerPluginInput = path.join(coreSourceRoot, "gateway", "core-runtime", "router-plugin.ts");
 export const upstreamHeaderSanitizerInput = path.join(coreSourceRoot, "gateway", "core-runtime", "upstream-header-sanitizer.ts");
 const lightweightMcpBundleNames = ["browser-web-search-proxy-mcp.js", "fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js", "media-tools-proxy-mcp.js"];
@@ -324,6 +325,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       localAgentAuthProviderHookInput,
+      bedrockProviderHookInput,
       routerPluginInput,
       upstreamHeaderSanitizerInput,
       electronUndiciProxyAgentInput,
@@ -359,6 +361,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       localAgentAuthProviderHookInput,
+      bedrockProviderHookInput,
       routerPluginInput,
       upstreamHeaderSanitizerInput
     ],
@@ -391,6 +394,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       localAgentAuthProviderHookInput,
+      bedrockProviderHookInput,
       routerPluginInput,
       upstreamHeaderSanitizerInput
     ],

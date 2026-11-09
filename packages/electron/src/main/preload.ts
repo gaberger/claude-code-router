@@ -40,6 +40,7 @@ import type {
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
+  AwsProfileInfo,
   LocalAgentProviderCandidate,
   LocalAgentProviderImportRequest,
   LocalAgentProviderImportResult,
@@ -87,6 +88,7 @@ import type {
   UsageStatsResetResult,
   UsageStatsSnapshot
 } from "@ccr/core/contracts/app";
+import type { KitsAction, KitsState } from "@ccr/core/profiles/kits/kit-service";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
 
 function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
@@ -118,6 +120,9 @@ contextBridge.exposeInMainWorld("ccr", {
   getAgentAnalysis: (filter?: AgentAnalysisFilter) => invoke(IPC_CHANNELS.appGetAgentAnalysis, filter) as Promise<AgentAnalysisSnapshot>,
   getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => invoke(IPC_CHANNELS.appGetAgentTracePayload, request) as Promise<AgentAnalysisTracePayloadFullResult>,
   getAppInfo: () => invoke(IPC_CHANNELS.appGetInfo) as Promise<AppInfo>,
+  applyKitsAction: (action: KitsAction) => invoke(IPC_CHANNELS.appApplyKitsAction, action) as Promise<KitsState>,
+  getAwsProfiles: () => invoke(IPC_CHANNELS.appGetAwsProfiles) as Promise<AwsProfileInfo[]>,
+  getKitsState: () => invoke(IPC_CHANNELS.appGetKitsState) as Promise<KitsState>,
   getConfig: () => invoke(IPC_CHANNELS.appGetConfig) as Promise<AppConfig>,
   getFilePath: (file: File) => webUtils.getPathForFile(file),
   getGatewayStatus: () => invoke(IPC_CHANNELS.appGetGatewayStatus) as Promise<GatewayStatus>,

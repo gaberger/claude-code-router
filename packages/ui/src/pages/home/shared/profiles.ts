@@ -554,6 +554,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
     fableModel: "",
     haikuModel: "",
+    kits: [],
     managedCompact: false,
     model: "",
     name: name ?? profileAgentLabel(agent),
@@ -607,6 +608,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       availableModels: profileDraftAvailableModels(profile),
       fableModel: profile.fableModel ?? "",
       haikuModel: profile.haikuModel ?? profile.smallFastModel ?? "",
+      kits: profile.kits ?? [],
       managedCompact: Boolean(profile.managedCompact),
       model: profile.model,
       opusModel: profile.opusModel ?? "",
@@ -747,6 +749,7 @@ export function profileConfigFromDraft(
     fableModel: draft.fableModel,
     haikuModel: draft.haikuModel,
     id,
+    ...(draft.agent === "claude-code" && draft.kits.length > 0 ? { kits: draft.kits } : {}),
     managedCompact: draft.managedCompact,
     model: draft.model,
     name: draft.name,
@@ -1421,6 +1424,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       fableModel: stringValue(profile.fableModel) || "",
       haikuModel: stringValue(profile.haikuModel) || stringValue(profile.smallFastModel) || "",
       id: profile.id || `profile-${index + 1}`,
+      ...(profile.kits?.length ? { kits: profile.kits } : {}),
       managedCompact: Boolean(profile.managedCompact),
       model,
       name,
@@ -1598,6 +1602,7 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
             ? value.smallModel
             : undefined,
     id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : `profile-${index + 1}`,
+    kits: Array.isArray(value.kits) ? value.kits.filter((kit): kit is string => typeof kit === "string") : undefined,
     managedCompact: typeof value.managedCompact === "boolean"
       ? value.managedCompact
       : typeof value.managed_compact === "boolean"

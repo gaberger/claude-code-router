@@ -47,7 +47,7 @@ import {
 } from "./usage";
 import type { RouterConditionSource } from "./options";
 
-export type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
+export type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "kits" | "extensions";
 export type NavigationId = ViewId;
 export type OnboardingStepId = "provider" | "profile" | "enter";
 export type AppLanguagePreference = "system" | "en" | "zh";
@@ -95,10 +95,13 @@ export type AddProviderDraft = {
   apiKey: string;
   autoFetchModels: boolean;
   autoFetchKnownModels: string[];
+  /** Named profile from ~/.aws/config for Amazon Bedrock. Empty uses the default credential chain. */
+  awsProfile: string;
+  awsRegion: string;
   baseUrl: string;
   capabilities: GatewayProviderCapability[];
   catalogModelMetadata?: Record<string, ProviderModelMetadata>;
-  credentialMode: "apiKey" | "pool";
+  credentialMode: "apiKey" | "pool" | "aws";
   credentials: ProviderCredentialDraft[];
   extraBodyText: string;
   extraHeadersText: string;
@@ -189,6 +192,8 @@ export type AddProfileDraft = {
   envRows: KeyValueDraftRow[];
   fableModel: string;
   haikuModel: string;
+  /** Kits a Claude Code profile loads on every launch. */
+  kits: string[];
   managedCompact: boolean;
   model: string;
   name: string;

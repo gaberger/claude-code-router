@@ -39,6 +39,7 @@ import type {
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
+  AwsProfileInfo,
   LocalAgentProviderCandidate,
   LocalAgentProviderImportRequest,
   LocalAgentProviderImportResult,
@@ -86,6 +87,7 @@ import type {
   UsageStatsResetResult,
   UsageStatsSnapshot
 } from "@ccr/core/contracts/app";
+import type { KitsAction, KitsState } from "@ccr/core/profiles/kits/kit-service";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
 
 declare global {
@@ -106,6 +108,9 @@ declare global {
       getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => Promise<AgentAnalysisTracePayloadFullResult>;
       getAppInfo: () => Promise<AppInfo>;
       getChromeLoginImport?: (id: string) => Promise<ChromeLoginImportJob | undefined>;
+      applyKitsAction: (action: KitsAction) => Promise<KitsState>;
+      getAwsProfiles: () => Promise<AwsProfileInfo[]>;
+      getKitsState: () => Promise<KitsState>;
       getConfig: () => Promise<AppConfig>;
       getFilePath?: (file: File) => string;
       getGatewayStatus: () => Promise<GatewayStatus>;

@@ -217,7 +217,25 @@ async function runClaudeCodeCliWrapper(args) {
 function claudeCodeCliWrapperArgs(args) {
   // Keep the profile model as an environment default. Promoting it to an
   // explicit startup argument can prevent /model from controlling the session.
-  return claudeCodeArgsWithMcpConfig(args, process.env);
+  return claudeCodeArgsWithKits(claudeCodeArgsWithMcpConfig(args, process.env), process.env);
+}
+
+// Kits: the profile writes the --plugin-dir / --append-system-prompt-file flags
+// its kits need to a JSON file; read it at launch so a rebuilt kit is picked up.
+function claudeCodeArgsWithKits(args, env) {
+  const file = nonEmptyEnvFrom(env, "CCR_CLAUDE_CODE_KIT_ARGS_FILE");
+  if (!file || claudeCodeArgsShouldSkipModelInjection(args)) {
+    return args;
+  }
+  try {
+    const extra = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (Array.isArray(extra) && extra.every((item) => typeof item === "string")) {
+      return extra.concat(args);
+    }
+  } catch (error) {
+    log("claude_code_kit_args_unreadable", { file, error: formatError(error) });
+  }
+  return args;
 }
 
 function claudeCodeArgsWithMcpConfig(args, env) {

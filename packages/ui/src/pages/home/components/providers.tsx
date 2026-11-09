@@ -21,8 +21,10 @@ import {
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
 import { Tooltip, TooltipPortal } from "@/components/ui/tooltip";
+import { bedrockDefaultRegion, bedrockProviderPresetId, bedrockRuntimeBaseUrl } from "@ccr/core/providers/presets/bedrock/index";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import type { ChromeLoginImportJob, LocalAgentProviderCandidate, OpenRouterProviderCatalogItem, OpenRouterProviderCatalogRequest, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
+import { Select, type SelectOption } from "@/components/ui/select";
+import type { AwsProfileInfo, ChromeLoginImportJob, LocalAgentProviderCandidate, OpenRouterProviderCatalogItem, OpenRouterProviderCatalogRequest, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -1741,6 +1743,7 @@ function ProviderConnectionStatusPanel({
   connectivityLoading,
   connectivityProbe,
   hasConnectivityCheckInputs,
+  awsProfile,
   localAgentImport,
   onCheck,
   probe,
@@ -1750,6 +1753,7 @@ function ProviderConnectionStatusPanel({
   connectivityLoading: boolean;
   connectivityProbe?: GatewayProviderProbeResult;
   hasConnectivityCheckInputs: boolean;
+  awsProfile: boolean;
   localAgentImport: boolean;
   onCheck?: () => Promise<unknown>;
   probe?: GatewayProviderProbeResult;
@@ -1760,6 +1764,8 @@ function ProviderConnectionStatusPanel({
   const connectionVerified = providerProbeHasSupportedProtocol(connectivityProbe);
   const protocolTitle = probeLoading
     ? "Detecting protocols"
+    : awsProfile
+      ? "Amazon Bedrock (Anthropic Messages)"
     : localAgentImport
       ? "Local login provider"
       : protocolDetected
@@ -1767,11 +1773,15 @@ function ProviderConnectionStatusPanel({
         : "Waiting for provider details";
   const protocolDescription = probeLoading
     ? "CCR is checking which API protocols this endpoint supports."
+    : awsProfile
+      ? "Bedrock is used through the Anthropic Messages protocol, so no protocol detection is needed."
     : protocolDetected
       ? "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually."
       : "Choose a provider endpoint so CCR can detect compatible protocols.";
   const requestTitle = connectivityLoading
     ? "Checking connection"
+    : awsProfile
+      ? "Not checked here"
     : localAgentImport
       ? "Available after saving"
       : connectionVerified
@@ -1781,6 +1791,8 @@ function ProviderConnectionStatusPanel({
           : "Waiting for required fields";
   const requestDescription = connectivityLoading
     ? "CCR is sending a limited real model request."
+    : awsProfile
+      ? "Requests are signed with your AWS profile when the provider is first used. Send a test prompt through CCR to confirm access to the model."
     : localAgentImport
       ? "The imported local agent login is connected when this provider is saved."
       : connectionVerified
@@ -1896,6 +1908,17 @@ function ProviderApiKeyInput({
       </Button>
     </div>
   );
+}
+
+function awsProfileKindLabel(kind: AwsProfileInfo["kind"]): string {
+  switch (kind) {
+    case "sso": return "SSO";
+    case "role": return "assume role";
+    case "process": return "credential process";
+    case "web-identity": return "web identity";
+    case "static": return "access keys";
+    default: return "profile";
+  }
 }
 
 function ProviderCredentialModeTabs({
@@ -2037,9 +2060,11 @@ export function AddProviderForm({
   );
   const providerIdentityReady = importMode || Boolean(selectedPreset || draft.baseUrl.trim());
   const credentialReady = localAgentImport || Boolean(
-    draft.credentialMode === "pool"
-      ? credentialPoolReady
-      : draft.apiKey.trim()
+    draft.credentialMode === "aws"
+      ? true
+      : draft.credentialMode === "pool"
+        ? credentialPoolReady
+        : draft.apiKey.trim()
   );
   const modelsReady = configuredModels.length > 0;
   const connectionVerified = localAgentImport || providerProbeHasSupportedProtocol(connectivityProbe);
@@ -2147,6 +2172,47 @@ export function AddProviderForm({
     return () => window.clearTimeout(timer);
   }, [customEndpoint, draft.baseUrl, draft.icon]);
 
+  const [awsProfiles, setAwsProfiles] = useState<AwsProfileInfo[]>([]);
+  const [awsProfilesLoaded, setAwsProfilesLoaded] = useState(false);
+  const awsMode = draft.credentialMode === "aws";
+  useEffect(() => {
+    if (!awsMode || !window.ccr?.getAwsProfiles) {
+      return;
+    }
+    let cancelled = false;
+    void window.ccr.getAwsProfiles()
+      .then((profiles) => { if (!cancelled) setAwsProfiles(profiles); })
+      .catch(() => { if (!cancelled) setAwsProfiles([]); })
+      .finally(() => { if (!cancelled) setAwsProfilesLoaded(true); });
+    return () => { cancelled = true; };
+  }, [awsMode]);
+  const awsProfileOptions: SelectOption[] = [
+    { label: t("Default credential chain (AWS_PROFILE or environment)"), value: "" },
+    ...awsProfiles.map((profile) => ({
+      label: `${profile.name} · ${awsProfileKindLabel(profile.kind)}${profile.region ? ` · ${profile.region}` : ""}`,
+      value: profile.name
+    })),
+    // Keep a saved profile selectable even when it was removed from ~/.aws.
+    ...(awsProfilesLoaded && draft.awsProfile && !awsProfiles.some((profile) => profile.name === draft.awsProfile)
+      ? [{ label: `${draft.awsProfile} (${t("not found in ~/.aws")})`, value: draft.awsProfile }]
+      : [])
+  ];
+
+  function updateAwsProfile(awsProfile: string) {
+    const region = awsProfiles.find((profile) => profile.name === awsProfile)?.region;
+    // A profile's own region is almost always the right one; the field stays editable.
+    onChange({ awsProfile, ...(region ? { awsRegion: region, baseUrl: bedrockRuntimeBaseUrl(region) } : {}) }, false);
+  }
+
+  // Switching away from Bedrock must not leave AWS-only state behind.
+  const leaveAwsMode: Partial<AddProviderDraft> = draft.credentialMode === "aws"
+    ? { awsProfile: "", awsRegion: "", credentialMode: "apiKey", protocolDetectionMode: "auto" }
+    : {};
+
+  function updateAwsRegion(awsRegion: string) {
+    onChange({ awsRegion, baseUrl: bedrockRuntimeBaseUrl(awsRegion) }, false);
+  }
+
   function updatePreset(presetId: string) {
     if (!presetId) {
       onChange({
@@ -2158,6 +2224,7 @@ export function AddProviderForm({
         modelDisplayNames: undefined,
         modelMetadata: undefined,
         modelSearch: "",
+        ...leaveAwsMode,
         presetId,
         providerPlugins: [],
         selectedModels: [],
@@ -2176,6 +2243,7 @@ export function AddProviderForm({
         modelDisplayNames: undefined,
         modelMetadata: undefined,
         modelSearch: "",
+        ...leaveAwsMode,
         presetId,
         providerPlugins: [],
         selectedModels: [],
@@ -2191,7 +2259,17 @@ export function AddProviderForm({
     const accountDraft = createProviderAccountDraftFromConfig(defaultProviderAccountConfigForPreset(presetId));
     onChange({
       ...accountDraft,
-      baseUrl: endpoint?.baseUrl ?? "",
+      ...(presetId === bedrockProviderPresetId
+        ? {
+            awsProfile: draft.awsProfile,
+            awsRegion: draft.awsRegion || bedrockDefaultRegion,
+            credentialMode: "aws" as const,
+            protocolDetectionMode: "manual" as const
+          }
+        : leaveAwsMode),
+      baseUrl: presetId === bedrockProviderPresetId
+        ? bedrockRuntimeBaseUrl(draft.awsRegion || bedrockDefaultRegion)
+        : endpoint?.baseUrl ?? "",
       catalogModelMetadata: undefined,
       icon: "",
       modelDescriptions: undefined,
@@ -2308,6 +2386,30 @@ export function AddProviderForm({
               title={t("Add credentials")}
             />
             <div className="sm:col-span-2 space-y-4">
+              {draft.credentialMode === "aws" ? (
+                <div className="space-y-3">
+                  <Field label={t("AWS region")}>
+                    <Input
+                      onChange={(event) => updateAwsRegion(event.target.value)}
+                      placeholder={bedrockDefaultRegion}
+                      value={draft.awsRegion}
+                    />
+                  </Field>
+                  <Field label={t("AWS profile")}>
+                    <Select
+                      onValueChange={updateAwsProfile}
+                      options={awsProfileOptions}
+                      value={draft.awsProfile}
+                    />
+                  </Field>
+                  <p className="text-[12px] leading-5 text-muted-foreground">
+                    {awsProfilesLoaded && awsProfiles.length === 0
+                      ? t("No profiles found in ~/.aws/config or ~/.aws/credentials. Run `aws configure` or `aws configure sso`, or use the default credential chain (AWS_PROFILE or environment credentials).")
+                      : t("Requests are signed with credentials from the selected profile, including SSO and assume-role profiles. No API key is stored.")}
+                  </p>
+                </div>
+              ) : (
+              <>
               <ProviderCredentialModeTabs
                 value={draft.credentialMode}
                 onChange={updateCredentialMode}
@@ -2341,6 +2443,8 @@ export function AddProviderForm({
                     </div>
                   ) : null}
                 </div>
+              )}
+              </>
               )}
             </div>
           </>
@@ -2386,6 +2490,7 @@ export function AddProviderForm({
               connectivityLoading={connectivityLoading}
               connectivityProbe={connectivityProbe}
               hasConnectivityCheckInputs={hasConnectivityCheckInputs}
+              awsProfile={draft.credentialMode === "aws"}
               localAgentImport={localAgentImport}
               onCheck={onCheck}
               probe={probe}
@@ -3517,9 +3622,11 @@ export function AddProviderDialog({
   const providerIdentityReady = Boolean(importProvider) || Boolean(selectedPreset || draft.baseUrl.trim());
   const credentialPoolReady = providerDraftHasReadyCredentialPool(draft);
   const credentialReady = localAgentImport || Boolean(
-    draft.credentialMode === "pool"
-      ? credentialPoolReady
-      : draft.apiKey.trim()
+    draft.credentialMode === "aws"
+      ? true
+      : draft.credentialMode === "pool"
+        ? credentialPoolReady
+        : draft.apiKey.trim()
   );
   const modelsReady = checkModels.length > 0;
   const activeStepIndex = Math.max(0, providerSetupStepIds.indexOf(activeStep));

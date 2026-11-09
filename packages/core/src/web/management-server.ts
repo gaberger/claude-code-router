@@ -29,6 +29,8 @@ import {
 } from "@ccr/core/config/constants";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
 import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
+import { applyKitsAction, getKitsState, type KitsAction } from "@ccr/core/profiles/kits/kit-service";
+import { listAwsProfiles } from "@ccr/core/providers/aws-profiles";
 import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getOpenRouterProviderCatalog } from "@ccr/core/providers/openrouter-provider-catalog";
@@ -326,6 +328,9 @@ const rpcHandlers: Record<string, RpcHandler> = {
       Boolean(serviceToken.trim()) &&
       serviceToken === process.env.CCR_SERVICE_INSTANCE_TOKEN
   }),
+  applyKitsAction: (action) => applyKitsAction(action as KitsAction),
+  getAwsProfiles: () => listAwsProfiles(),
+  getKitsState: () => getKitsState(),
   getLocalAgentProviderCandidates: () => getLocalAgentProviderCandidates(),
   getOnboardingFinished: () => loadOnboardingFinished(),
   getPluginMarketplace,

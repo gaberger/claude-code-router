@@ -640,6 +640,8 @@ export function createProviderDraftFromDeepLinkPayload(
     apiKey: payload.apiKey?.trim() || "",
     autoFetchModels: false,
     autoFetchKnownModels: [],
+    awsProfile: "",
+    awsRegion: "",
     baseUrl,
     capabilities: payload.capabilities ?? [],
     catalogModelMetadata: undefined,
@@ -740,6 +742,8 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     apiKey: "",
     autoFetchModels: false,
     autoFetchKnownModels: [],
+    awsProfile: "",
+    awsRegion: "",
     baseUrl: "",
     capabilities: [],
     catalogModelMetadata: undefined,
@@ -774,10 +778,12 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     apiKey: providerApiKey(provider),
     autoFetchModels: Boolean(provider.autoFetchModels),
     autoFetchKnownModels: mergeProviderModelLists(provider.autoFetchKnownModels ?? []),
+    awsProfile: provider.bedrock?.profile ?? "",
+    awsRegion: provider.bedrock?.region ?? "",
     baseUrl,
     capabilities: provider.capabilities ?? [],
     catalogModelMetadata: undefined,
-    credentialMode: providerDraftHasReadyCredentialPool({ credentials }) ? "pool" : "apiKey",
+    credentialMode: provider.bedrock ? "aws" : providerDraftHasReadyCredentialPool({ credentials }) ? "pool" : "apiKey",
     credentials,
     extraBodyText: providerExtraJsonDraftText(provider.extraBody),
     extraHeadersText: providerExtraJsonDraftText(provider.extraHeaders),
@@ -791,8 +797,8 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     modelSearch: "",
     modelsText: provider.models.join("\n"),
     name: provider.name,
-    presetId: preset?.id ?? customProviderPresetId,
-    protocolDetectionMode: provider.protocolDetectionMode === "manual" ? "manual" : "auto",
+    presetId: provider.bedrock ? "bedrock" : preset?.id ?? customProviderPresetId,
+    protocolDetectionMode: provider.bedrock || provider.protocolDetectionMode === "manual" ? "manual" : "auto",
     providerPlugins: [],
     protocol,
     selectedModels: [],
@@ -2447,7 +2453,7 @@ export function providerMatchesQuery(provider: GatewayProviderConfig, query: str
 }
 
 export function viewUsesInternalScroll(view: ViewId): boolean {
-  return view === "observability" || view === "api-keys" || view === "profile" || view === "networking" || view === "logs" || view === "providers" || view === "models" || view === "routing" || view === "virtual-models" || view === "extensions";
+  return view === "observability" || view === "api-keys" || view === "profile" || view === "networking" || view === "logs" || view === "providers" || view === "models" || view === "routing" || view === "virtual-models" || view === "kits" || view === "extensions";
 }
 
 export function uniqueProviderName(providers: GatewayProviderConfig[], baseName = "provider"): string {

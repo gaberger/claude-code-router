@@ -222,6 +222,20 @@ export function resolveLocalAgentAuthProviderHookEntry(): string {
   ].find((candidate) => existsSync(candidate)) ?? pathJoin(__dirname, "local-agent-auth-provider-hook.js");
 }
 
+export function resolveBedrockProviderHookEntry(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  return [
+    pathJoin(__dirname, "bedrock-provider-hook.js"),
+    pathJoin(process.cwd(), ".test-dist", "core", "runtime", "bedrock-provider-hook.js"),
+    ...(resourcesPath
+      ? [
+          pathJoin(resourcesPath, "app.asar", "dist", "main", "bedrock-provider-hook.js"),
+          pathJoin(resourcesPath, "app", "dist", "main", "bedrock-provider-hook.js")
+        ]
+      : [])
+  ].find((candidate) => existsSync(candidate)) ?? pathJoin(__dirname, "bedrock-provider-hook.js");
+}
+
 export function resolveRouterPluginEntry(): string {
   const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
   return [
