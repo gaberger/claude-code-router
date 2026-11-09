@@ -46,3 +46,12 @@ test("a Claude Code profile keeps valid kit names, once each, and drops the rest
   const [plain] = parseProfilesForTest([{ agent: "claude-code", enabled: true, id: "q", model: "m", name: "Q" }]);
   assert.equal("kits" in plain, false);
 });
+
+test("permissions kept in a profile's claudeSettings survive the config parser (the store `ccr permissions` writes to)", () => {
+  const [profile] = parseProfilesForTest([{
+    agent: "claude-code", claudeSettings: { model: "m", permissions: { allow: ["Read", "Bash(git:*)"], defaultMode: "acceptEdits" } },
+    enabled: true, id: "p", model: "m", name: "P"
+  }]);
+  assert.deepEqual(profile.claudeSettings.permissions, { allow: ["Read", "Bash(git:*)"], defaultMode: "acceptEdits" });
+  assert.deepEqual(Object.keys(profile.claudeSettings), ["model", "permissions"]);
+});

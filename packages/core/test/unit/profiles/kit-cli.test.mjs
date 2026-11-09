@@ -9,8 +9,11 @@ function harness() {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-kit-cli-"));
   const lines = [];
   const profiles = { work: ["base"], bare: [] };
+  const settings = { work: { model: "m", permissions: { allow: ["Read"] } }, bare: {} };
   const edited = [];
   const host = {
+    claudeSettings: (ref) => { if (!(ref in settings)) throw new Error(`Profile not found: ${ref}`); return settings[ref]; },
+    setClaudeSettings: async (ref, next) => { settings[ref] = next; },
     editFile: async (file) => { edited.push(file); },
     out: (line) => lines.push(line),
     profileKits: (ref) => { if (!(ref in profiles)) throw new Error(`Profile not found: ${ref}`); return [...profiles[ref]]; },
@@ -19,12 +22,12 @@ function harness() {
     soleProfile: () => undefined
   };
   const run = (...argv) => runKitCli(argv, host);
-  return { edited, host, lines, profiles, root, run, done: () => rmSync(root, { force: true, recursive: true }) };
+  return { edited, host, lines, profiles, root, run, settings, done: () => rmSync(root, { force: true, recursive: true }) };
 }
 const write = (file, text = "x") => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
 
 test("only library, kit and loads are kit commands", () => {
-  for (const word of ["library", "kit", "loads"]) assert.equal(isKitCliCommand(word), true);
+  for (const word of ["library", "kit", "loads", "permissions", "perms", "doctor"]) assert.equal(isKitCliCommand(word), true);
   for (const word of ["start", "work", undefined]) assert.equal(isKitCliCommand(word), false);
 });
 
@@ -115,5 +118,67 @@ test("kit edit creates the instructions file and hands it to the editor; bad usa
     await assert.rejects(t.run("kit", "use", "net"), /Usage: ccr kit use/);
     await assert.rejects(t.run("kit", "wat"), /Usage: ccr kit list/);
     await assert.rejects(t.run("loads"), /Usage: ccr loads <profile>/);
+  } finally { t.done(); }
+});
+
+test("ccr permissions edits the named profile, accepts the perms alias, and defaults to the only profile", async () => {
+  const t = harness();
+  try {
+    await t.run("permissions", "work", "add", "Glob");
+    assert.deepEqual(t.settings.work.permissions.allow, ["Read", "Glob"]);
+    assert.equal(t.settings.work.model, "m");
+    t.lines.length = 0;
+    await t.run("perms", "work", "mode", "plan");
+    assert.equal(t.settings.work.permissions.defaultMode, "plan");
+    assert.deepEqual(t.lines, ["Mode is plan."]);
+
+    t.lines.length = 0;
+    await t.run("permissions", "work");
+    assert.deepEqual(t.lines, ["mode: plan", "allow (2):", "  Read", "  Glob"]);
+
+    // nothing to change: the profile is not rewritten
+    const before = t.settings.work;
+    await t.run("permissions", "work", "rm", "Nope");
+    assert.equal(t.settings.work, before);
+
+    await assert.rejects(t.run("permissions", "ghost", "show"), /Profile not found: ghost/);
+    await assert.rejects(t.run("permissions", "add", "Read"), /Usage: ccr permissions/);
+    t.host.soleProfile = () => "work";
+    await t.run("permissions", "add", "Grep");
+    assert.deepEqual(t.settings.work.permissions.allow, ["Read", "Glob", "Grep"]);
+  } finally { t.done(); }
+});
+
+test("ccr doctor reports ok/warn/FAIL and fails the run only on a failure", async () => {
+  const t = harness();
+  try {
+    write(path.join(t.root, "library", "skills", "real", "SKILL.md"));
+    write(path.join(t.root, "library", "plugins", "bare-plugin", "x.txt"));
+    await t.run("kit", "new", "base");
+    await t.run("kit", "use", "base", "skills/real", "skills/gone");
+
+    t.lines.length = 0;
+    await t.run("doctor", "work");
+    assert.deepEqual(t.lines, [
+      "warn  plugins/bare-plugin has no .claude-plugin/plugin.json, so it is named after its folder.",
+      "warn  Kit base: the library no longer has skills/gone.",
+      "ok    Library: 1 skills, 0 agents, 1 plugins; 1 kit.",
+      "ok    work: kit base exists.",
+      "ok    work: 1 permission rule, mode default."
+    ]);
+
+    t.profiles.work = ["base", "ghost"];
+    t.settings.work = { permissions: "yes" };
+    t.lines.length = 0;
+    await assert.rejects(t.run("doctor", "work"), /2 problems found\./);
+    assert.ok(t.lines.some((line) => line.startsWith("FAIL  work: kit ghost does not exist. Remove it with: ccr kit detach ghost work")));
+    assert.ok(t.lines.some((line) => /^FAIL  work: `permissions`.*not an object/.test(line)));
+
+    // a kit named like a library plugin clashes
+    write(path.join(t.root, "library", "plugins", "egm", ".claude-plugin", "plugin.json"), '{"name":"egm"}');
+    write(path.join(t.root, "kits", "egm", "uses"), "");
+    t.lines.length = 0;
+    await assert.rejects(t.run("doctor"), /problem/);
+    assert.ok(t.lines.some((line) => /FAIL  Kit egm has the name of a library plugin/.test(line)));
   } finally { t.done(); }
 });

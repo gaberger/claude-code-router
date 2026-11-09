@@ -320,11 +320,11 @@ function parseArgs(args: string[]): CliOptions {
 
 /** `ccr library|kit|loads`: local commands over the kit store; no gateway, no network. */
 async function runKitCommand(argv: string[]): Promise<void> {
-  if (argv.includes("--help") || argv.includes("-h") || argv.length === 1) {
+  if (argv.includes("--help") || argv.includes("-h") || (argv.length === 1 && argv[0] !== "doctor" && argv[0] !== "permissions" && argv[0] !== "perms" && argv[0] !== "loads")) {
     process.stdout.write(`${kitCliHelp()}\n`);
     return;
   }
-  const needsConfig = argv[0] === "loads" || (argv[0] === "kit" && (argv[1] === "attach" || argv[1] === "detach"));
+  const needsConfig = argv[0] === "loads" || argv[0] === "permissions" || argv[0] === "perms" || argv[0] === "doctor" || (argv[0] === "kit" && (argv[1] === "attach" || argv[1] === "detach"));
   const config = needsConfig ? await loadAppConfig() : undefined;
   const claudeProfile = (ref: string): ProfileConfig => {
     if (!config) throw new Error("Profiles are not loaded.");
@@ -335,6 +335,7 @@ async function runKitCommand(argv: string[]): Promise<void> {
     return profile;
   };
   const host: KitCliHost = {
+    claudeSettings: (ref) => claudeProfile(ref).claudeSettings ?? {},
     editFile: (file) => new Promise((resolve, reject) => {
       const editor = process.env.VISUAL || process.env.EDITOR || "vi";
       const child = spawn(editor, [file], { shell: true, stdio: "inherit" });
@@ -344,6 +345,10 @@ async function runKitCommand(argv: string[]): Promise<void> {
     out: (line) => process.stdout.write(`${line}\n`),
     profileKits: (ref) => claudeProfile(ref).kits ?? [],
     root: kitStoreRoot(),
+    setClaudeSettings: async (ref, settings) => {
+      claudeProfile(ref).claudeSettings = settings;
+      await saveAppConfig(config!);
+    },
     setProfileKits: async (ref, kits) => {
       claudeProfile(ref).kits = kits.length > 0 ? kits : undefined;
       await saveAppConfig(config!);

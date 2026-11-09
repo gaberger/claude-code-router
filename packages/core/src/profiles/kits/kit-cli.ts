@@ -6,6 +6,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { readPermissions, runPermissions, permissionsUsage } from "@ccr/core/profiles/kits/permissions";
 import {
   addToLibrary, createKit, dropEntries, kitsDir, listKits, makeLibraryFolder, moveInLibrary, planLoads,
   readUses, removeFromLibrary, removeKit, renameLibraryFolder, resolveEntry, scanLibrary, useEntries,
@@ -16,15 +17,18 @@ export type KitCliHost = {
   /** Open a file in the user's editor and wait. */
   editFile(file: string): Promise<void>;
   out(line: string): void;
+  /** A Claude Code profile's own settings (merged into its generated settings.json). Throws when the profile is unknown. */
+  claudeSettings(profileRef: string): Record<string, unknown>;
   /** Kits attached to a Claude Code profile (name or id). Throws when the profile is unknown. */
   profileKits(profileRef: string): string[];
   /** Name of the profile `loads` uses when none is given, if there is exactly one. */
   soleProfile(): string | undefined;
   root: string;
+  setClaudeSettings(profileRef: string, settings: Record<string, unknown>): Promise<void>;
   setProfileKits(profileRef: string, kits: string[]): Promise<void>;
 };
 
-export const kitCliCommands = ["library", "kit", "loads"] as const;
+export const kitCliCommands = ["library", "kit", "loads", "permissions", "perms", "doctor"] as const;
 
 export function isKitCliCommand(word: string | undefined): boolean {
   return (kitCliCommands as readonly string[]).includes(word ?? "");
@@ -35,6 +39,8 @@ export async function runKitCli(argv: string[], host: KitCliHost): Promise<void>
   if (command === "library") return runLibrary(rest, host);
   if (command === "kit") return runKit(rest, host);
   if (command === "loads") return runLoads(rest, host);
+  if (command === "permissions" || command === "perms") return runPermissionsCommand(rest, host);
+  if (command === "doctor") return runDoctor(rest, host);
   throw new Error(`Unknown command: ${command ?? ""}`);
 }
 
@@ -48,6 +54,9 @@ export function kitCliHelp(): string {
     "            use <k> <entry>… | drop <k> <entry>…",
     "            attach <k> <profile> | detach <k> <profile>",
     "ccr loads [<profile>]                    what a launch loads, kit by kit; builds nothing",
+    "ccr doctor [<profile>]                   check the library, kits and a profile; exits 1 on a failure",
+    `${permissionsUsage}`,
+    "                                         what a profile's claude may do without asking",
     "ccr <profile> +<kit>… [args…]            start the profile with these kits for this run only",
     "",
     "An entry is skills/<name>, agents/<name>, plugins/<name>, or a folder such as skills/net/."
@@ -242,4 +251,66 @@ function printKit(kit: LoadsKit, out: (line: string) => void): void {
     out(`  ${line.entry}  ${label}`);
     if (folder) for (const item of line.items) out(`    ${item.name}`);
   }
+}
+
+// ------------------------------------------------------------ permissions --
+
+const permissionActions = ["show", "add", "rm", "mode"];
+
+async function runPermissionsCommand(args: string[], host: KitCliHost): Promise<void> {
+  const hasProfile = args.length > 0 && !permissionActions.includes(args[0]!);
+  const ref = hasProfile ? args[0] : host.soleProfile();
+  if (!ref) throw new Error(`Usage: ${permissionsUsage}  (there is more than one Claude Code profile, or none)`);
+  const result = runPermissions(host.claudeSettings(ref), hasProfile ? args.slice(1) : args);
+  if (result.changed) await host.setClaudeSettings(ref, result.settings);
+  for (const line of result.lines) host.out(line);
+}
+
+// ----------------------------------------------------------------- doctor --
+
+type Check = { level: "fail" | "ok" | "warn"; text: string };
+
+async function runDoctor(args: string[], host: KitCliHost): Promise<void> {
+  const { root } = host;
+  const checks: Check[] = [];
+  const items = scanLibrary(root);
+  const kits = listKits(root);
+  const plan = planLoads(root, kits);
+
+  for (const plugin of items.filter((item) => item.kind === "plugins")) {
+    if (!existsSync(path.join(plugin.dir, ".claude-plugin", "plugin.json"))) {
+      checks.push({ level: "warn", text: `plugins/${plugin.name} has no .claude-plugin/plugin.json, so it is named after its folder.` });
+    }
+  }
+  for (const kit of kits) {
+    if (items.some((item) => item.kind === "plugins" && item.name === kit)) {
+      checks.push({ level: "fail", text: `Kit ${kit} has the name of a library plugin; both are built as a plugin of that name.` });
+    }
+  }
+  for (const warning of plan.warnings) checks.push({ level: "warn", text: warning });
+  checks.push({
+    level: "ok",
+    text: `Library: ${items.filter((i) => i.kind === "skills").length} skills, ${items.filter((i) => i.kind === "agents").length} agents, ${items.filter((i) => i.kind === "plugins").length} plugins; ${kits.length} kit${kits.length === 1 ? "" : "s"}.`
+  });
+
+  const ref = args[0] ?? host.soleProfile();
+  if (ref) {
+    const attached = host.profileKits(ref);
+    for (const kit of attached) {
+      checks.push(kits.includes(kit)
+        ? { level: "ok", text: `${ref}: kit ${kit} exists.` }
+        : { level: "fail", text: `${ref}: kit ${kit} does not exist. Remove it with: ccr kit detach ${kit} ${ref}` });
+    }
+    try {
+      const { allow, mode } = readPermissions(host.claudeSettings(ref));
+      checks.push({ level: "ok", text: `${ref}: ${allow.length} permission rule${allow.length === 1 ? "" : "s"}, mode ${mode ?? "default"}.` });
+    } catch (error) {
+      checks.push({ level: "fail", text: `${ref}: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  }
+
+  const label = { fail: "FAIL", ok: "ok  ", warn: "warn" } as const;
+  for (const check of checks) host.out(`${label[check.level]}  ${check.text}`);
+  const failures = checks.filter((check) => check.level === "fail").length;
+  if (failures > 0) throw new Error(`${failures} problem${failures === 1 ? "" : "s"} found.`);
 }
