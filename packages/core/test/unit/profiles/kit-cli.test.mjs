@@ -186,3 +186,24 @@ test("ccr doctor reports ok/warn/FAIL and fails the run only on a failure", asyn
     assert.ok(t.lines.some((line) => /FAIL  Kit egm has the name of a library plugin/.test(line)));
   } finally { t.done(); }
 });
+
+test("library add with a folder of skills reports what was added and skipped; --agents reads .md files", async () => {
+  const t = harness();
+  try {
+    for (const rel of ["a", "b/c"]) write(path.join(t.root, "incoming", "pack", rel, "SKILL.md"));
+    write(path.join(t.root, "incoming", "agents", "x.md"));
+    await t.run("library", "add", path.join(t.root, "incoming", "pack"));
+    await t.run("library", "add", path.join(t.root, "incoming", "pack"));
+    await t.run("library", "add", path.join(t.root, "incoming", "agents"), "--agents", "--in", "mine");
+    assert.deepEqual(t.lines, [
+      "Added 2 items.",
+      "Added 0 items, skipped 2.",
+      "  skipped skills/a: the library already has that name",
+      "  skipped skills/c: the library already has that name",
+      "Added agents/x"
+    ]);
+    t.lines.length = 0;
+    await t.run("library", "list");
+    assert.deepEqual(t.lines, ["agents/mine/agents/x", "skills/pack/a", "skills/pack/b/c"]);
+  } finally { t.done(); }
+});

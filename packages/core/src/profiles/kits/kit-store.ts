@@ -159,6 +159,52 @@ export function addToLibrary(root: string, source: string, options: { folder?: s
   return `${kind}/${name}`;
 }
 
+export type TreeAddResult = { added: string[]; skipped: Array<{ entry: string; reason: string }> };
+
+/**
+ * Add every skill (or, with kind "agents", every .md agent) found under a
+ * directory, keeping its folder structure: adding `/x/network` puts a skill at
+ * `/x/network/inspect/foo` into the library folder `network/inspect`. Items the
+ * library already has by name are skipped and reported, not treated as failures.
+ */
+export function addTreeToLibrary(root: string, dir: string, options: { folder?: string; kind?: "agents" | "skills" } = {}): TreeAddResult {
+  const base = path.resolve(dir);
+  if (!isDirectory(base)) throw new Error(`Not a folder: ${dir}`);
+  const kind = options.kind ?? "skills";
+  const top = [options.folder ? safeRelative(options.folder) : "", path.basename(base)].filter(Boolean).join("/");
+  const found: Array<{ name: string; relFolder: string; source: string }> = [];
+  const walk = (current: string, relFolder: string) => {
+    for (const entry of readNames(current)) {
+      const full = path.join(current, entry);
+      if (!isDirectory(full)) {
+        if (kind === "agents" && entry.endsWith(".md")) found.push({ name: entry.slice(0, -3), relFolder, source: full });
+        continue;
+      }
+      if (kind === "skills" && existsSync(path.join(full, "SKILL.md"))) found.push({ name: entry, relFolder, source: full });
+      else walk(full, relFolder ? `${relFolder}/${entry}` : entry);
+    }
+  };
+  walk(base, "");
+  if (found.length === 0) {
+    throw new Error(kind === "agents" ? `No agent .md files found under ${dir}.` : `No skills (folders with a SKILL.md) found under ${dir}. For agents, add --agents.`);
+  }
+  const have = new Set(scanLibrary(root).filter((item) => item.kind === kind).map((item) => item.name));
+  const result: TreeAddResult = { added: [], skipped: [] };
+  for (const item of found) {
+    const entry = `${kind}/${item.name}`;
+    if (have.has(item.name)) {
+      result.skipped.push({ entry, reason: "the library already has that name" });
+      continue;
+    }
+    const targetFolder = path.join(libraryDir(root), kind, top, item.relFolder);
+    mkdirSync(targetFolder, { recursive: true });
+    cpSync(item.source, path.join(targetFolder, kind === "agents" ? `${item.name}.md` : item.name), { dereference: true, recursive: true });
+    have.add(item.name);
+    result.added.push(entry);
+  }
+  return result;
+}
+
 /** Move an item or folder into another library folder ("" or "/" is the top). */
 export function moveInLibrary(root: string, entry: string, toFolder: string): void {
   const items = scanLibrary(root);

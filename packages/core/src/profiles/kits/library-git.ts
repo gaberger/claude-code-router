@@ -6,9 +6,9 @@
  * its manifest name and skill prefix.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
-import { addToLibrary, buildDir, isValidKitName, kitsDir, libraryDir, scanLibrary } from "@ccr/core/profiles/kits/kit-store";
+import { addToLibrary, addTreeToLibrary, buildDir, isValidKitName, kitsDir, libraryDir, scanLibrary, type TreeAddResult } from "@ccr/core/profiles/kits/kit-store";
 
 const pluginNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -30,6 +30,22 @@ export function addToLibraryFromSource(root: string, source: string, options: { 
   const url = gitSourceUrl(source);
   if (!url) return addToLibrary(root, source.trim(), options); // throws "Not found: …"
   return addPluginFromGit(root, url);
+}
+
+/**
+ * Like addToLibraryFromSource, but a folder that is not itself a skill or plugin
+ * is read as a tree of skills (or agents, with kind "agents") and all of them are added.
+ */
+export function addSourceToLibrary(
+  root: string,
+  source: string,
+  options: { folder?: string; kind?: "agents" | "skills" } = {}
+): TreeAddResult {
+  const local = path.resolve(source.trim());
+  const isFolder = existsSync(local) && statSync(local).isDirectory();
+  const isSingle = isFolder && (existsSync(path.join(local, "SKILL.md")) || existsSync(path.join(local, ".claude-plugin", "plugin.json")));
+  if (isFolder && !isSingle) return addTreeToLibrary(root, local, options);
+  return { added: [addToLibraryFromSource(root, source, options)], skipped: [] };
 }
 
 export function addPluginFromGit(root: string, url: string): string {

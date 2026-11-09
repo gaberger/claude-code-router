@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  addToLibrary, buildLaunchPlan, createKit, dropEntries, isValidKitName, listKits, makeLibraryFolder,
+  addToLibrary, addTreeToLibrary, buildLaunchPlan, createKit, dropEntries, isValidKitName, listKits, makeLibraryFolder,
   moveInLibrary, planLoads, readUses, removeFromLibrary, removeKit, renameLibraryFolder, scanLibrary,
   useEntries, writeInstructions
 } from "@ccr/core/profiles/kits/kit-store.ts";
@@ -124,4 +124,32 @@ test("add, move, rename and remove keep the library and its kits consistent", ()
 
 test("paths that escape the library are refused", () => withRoot((root) => {
   assert.throws(() => makeLibraryFolder(root, "skills/../outside"), /not a library path/);
+}));
+
+test("adding a tree of skills keeps its folder structure, skips names the library has, and follows links", () => withRoot((root) => {
+  const src = path.join(root, "incoming", "network");
+  for (const rel of ["inspect/bgp", "inspect/edge", "plan/triage", "top"]) write(path.join(src, rel, "SKILL.md"), "---\n---\n");
+  write(path.join(src, "notes", "README.md"), "not a skill");
+  skill(root, "elsewhere/top"); // the library already has a skill named "top"
+
+  const result = addTreeToLibrary(root, src, { folder: "work" });
+  assert.deepEqual(result.added, ["skills/bgp", "skills/edge", "skills/triage"]);
+  assert.deepEqual(result.skipped, [{ entry: "skills/top", reason: "the library already has that name" }]);
+  assert.deepEqual(
+    scanLibrary(root).filter((i) => i.name !== "top").map((i) => `${i.name}:${i.folder}`),
+    ["bgp:work/network/inspect", "edge:work/network/inspect", "triage:work/network/plan"]
+  );
+  // a second run adds nothing and fails nothing
+  assert.deepEqual(addTreeToLibrary(root, src, { folder: "work" }).added, []);
+  assert.throws(() => addTreeToLibrary(root, path.join(root, "incoming", "network", "notes")), /No skills .*--agents/);
+  assert.throws(() => addTreeToLibrary(root, path.join(root, "nope")), /Not a folder/);
+}));
+
+test("adding a tree of agents takes every .md file and keeps folders", () => withRoot((root) => {
+  const src = path.join(root, "incoming", "dev");
+  write(path.join(src, "reviewer.md"), "a"); write(path.join(src, "deep", "tester.md"), "b"); write(path.join(src, "notes.txt"), "no");
+  const result = addTreeToLibrary(root, src, { kind: "agents" });
+  assert.deepEqual([...result.added].sort(), ["agents/reviewer", "agents/tester"]);
+  assert.deepEqual(scanLibrary(root).map((i) => `${i.name}:${i.folder}`), ["reviewer:dev", "tester:dev/deep"]);
+  assert.throws(() => addTreeToLibrary(root, path.join(root, "incoming", "dev", "deep", ".."), { kind: "agents", folder: "../x" }), /not a library path/);
 }));

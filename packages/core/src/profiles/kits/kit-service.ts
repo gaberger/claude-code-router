@@ -2,7 +2,7 @@
  * What the Kits page reads and does. One state snapshot and one action call,
  * so the Electron IPC and the web RPC stay two methods wide.
  */
-import { addToLibraryFromSource } from "@ccr/core/profiles/kits/library-git";
+import { addSourceToLibrary } from "@ccr/core/profiles/kits/library-git";
 import {
   createKit, dropEntries, listKits, planLoads, readInstructions, readUses, removeFromLibrary,
   removeKit, scanLibrary, useEntries, usesEntries, writeInstructions,
@@ -46,7 +46,7 @@ export function applyKitsAction(action: KitsAction, root: string = kitStoreRoot(
     case "use": useEntries(root, action.kit, action.entries); break;
     case "drop": dropEntries(root, action.kit, action.entries); break;
     case "setInstructions": writeInstructions(root, action.kit, action.text); break;
-    case "libraryAdd": addToLibraryFromSource(root, action.source.trim(), action.folder ? { folder: action.folder } : {}); break;
+    case "libraryAdd": addSourceToLibrary(root, action.source.trim(), action.folder ? { folder: action.folder } : {}); break;
     case "libraryRemove": removeFromLibrary(root, action.entry); break;
     default: throw new Error("Unknown kits action.");
   }

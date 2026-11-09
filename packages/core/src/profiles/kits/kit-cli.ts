@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { addToLibraryFromSource, updateLibraryPlugins } from "@ccr/core/profiles/kits/library-git";
+import { addSourceToLibrary, updateLibraryPlugins } from "@ccr/core/profiles/kits/library-git";
 import { readPermissions, runPermissions, permissionsUsage } from "@ccr/core/profiles/kits/permissions";
 import {
   createKit, dropEntries, kitsDir, listKits, makeLibraryFolder, moveInLibrary, planLoads,
@@ -48,7 +48,9 @@ export async function runKitCli(argv: string[], host: KitCliHost): Promise<void>
 export function kitCliHelp(): string {
   return [
     "ccr library list [skills|agents|plugins]",
-    "            add <path|owner/repo|git URL> [--in <folder>]   a skill folder, agent .md file, plugin folder, or a plugin repo",
+    "            add <path|owner/repo|git URL> [--in <folder>] [--agents]",
+    "                                          a skill folder, agent .md file, plugin folder or repo, or a folder",
+    "                                          of many skills (or, with --agents, agents), kept in its structure",
     "            update [plugins/<name>]       git pull the plugins added from git",
     "            mkdir skills/<folder> | mv <entry> <folder|/> | rename skills/<folder>/ <name>",
     "            rm <entry> | show <entry>",
@@ -80,13 +82,20 @@ async function runLibrary(args: string[], host: KitCliHost): Promise<void> {
       return;
     }
     case "add": {
+      const asAgents = rest.includes("--agents");
       const inIndex = rest.indexOf("--in");
       const folder = inIndex >= 0 ? rest[inIndex + 1] : undefined;
       if (inIndex >= 0 && !folder) throw new Error("--in needs a folder name.");
-      const positional = inIndex >= 0 ? rest.filter((_, index) => index !== inIndex && index !== inIndex + 1) : rest;
+      const positional = (inIndex >= 0 ? rest.filter((_, index) => index !== inIndex && index !== inIndex + 1) : rest).filter((word) => word !== "--agents");
       const source = positional[0];
       if (!source) throw new Error("Usage: ccr library add <path> [--in <folder>]");
-      out(`Added ${addToLibraryFromSource(root, source, folder ? { folder } : {})}`);
+      const result = addSourceToLibrary(root, source, { ...(folder ? { folder } : {}), ...(asAgents ? { kind: "agents" as const } : {}) });
+      if (result.added.length === 1 && result.skipped.length === 0) {
+        out(`Added ${result.added[0]}`);
+      } else {
+        out(`Added ${result.added.length} item${result.added.length === 1 ? "" : "s"}${result.skipped.length > 0 ? `, skipped ${result.skipped.length}` : ""}.`);
+        for (const skipped of result.skipped) out(`  skipped ${skipped.entry}: ${skipped.reason}`);
+      }
       return;
     }
     case "mkdir": {
