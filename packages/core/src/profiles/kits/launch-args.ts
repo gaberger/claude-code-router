@@ -22,10 +22,19 @@ function launchArgsFile(root: string, profileKey: string): string {
  * A file, not an env value, so shell and cmd wrappers need no quoting.
  * Returns undefined, and removes any stale file, when the profile has no kits.
  */
+export type KitStatusLine = {
+  /** The profile's own status line command(s), shown under the kit segment. */
+  chain: string[];
+  /** Shell prefix that runs the wrapper runtime, e.g. `node '/path/runtime.js'`. */
+  command: string;
+  profileName: string;
+};
+
 export function writeKitLaunchArgs(
   profileKey: string,
   kits: string[] | undefined,
-  root: string = kitStoreRoot()
+  root: string = kitStoreRoot(),
+  statusLine?: KitStatusLine
 ): { file?: string; warnings: string[] } {
   const file = launchArgsFile(root, profileKey);
   if (!kits || kits.length === 0) {
@@ -38,6 +47,19 @@ export function writeKitLaunchArgs(
     ...(plan.instructionsFile ? ["--append-system-prompt-file", plan.instructionsFile] : [])
   ];
   mkdirSync(path.dirname(file), { recursive: true });
+  if (statusLine) {
+    // `--settings` ranks above the profile's and the project's own status line, so
+    // the runtime prints the kit segment and then runs those itself (chain).
+    const configFile = file.replace(/\.json$/, ".statusline.json");
+    const settingsFile = file.replace(/\.json$/, ".settings.json");
+    writeFileSync(configFile, `${JSON.stringify({ chain: statusLine.chain, kits, profile: statusLine.profileName })}\n`);
+    writeFileSync(settingsFile, `${JSON.stringify({ statusLine: { command: `${statusLine.command} ccr-statusline ${quoteForShell(configFile)}`, type: "command" } })}\n`);
+    args.push("--settings", settingsFile);
+  }
   writeFileSync(file, `${JSON.stringify(args)}\n`);
   return { file, warnings: plan.warnings };
+}
+
+function quoteForShell(value: string): string {
+  return process.platform === "win32" ? `"${value.replace(/"/g, '""')}"` : `'${value.replace(/'/g, `'\\''`)}'`;
 }

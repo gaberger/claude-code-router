@@ -839,6 +839,33 @@ test("Claude Code wrapper puts the profile's kit flags before the user's argumen
   assert.deepEqual(JSON.parse(readFileSync(outputFile, "utf8")).argv, ["-p", "hi"]);
 });
 
+test("ccr-statusline prints the kit segment, then the profile's own line, then the project's", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-statusline-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const project = path.join(dir, "project");
+  mkdirSync(path.join(project, ".claude"), { recursive: true });
+  writeFileSync(path.join(project, ".claude", "settings.json"), JSON.stringify({ statusLine: { command: "echo project-line", type: "command" } }));
+  const configFile = path.join(dir, "statusline.json");
+  const run = (config, stdin) => {
+    writeFileSync(configFile, JSON.stringify(config));
+    return execFileSync(process.execPath, [runtimeFile, "ccr-statusline", configFile], { cwd: project, encoding: "utf8", input: stdin });
+  };
+  const status = JSON.stringify({ model: { display_name: "Haiku 4.5", id: "m" } });
+
+  assert.equal(
+    run({ chain: ["echo own-line"], kits: ["base", "net"], profile: "work" }, status),
+    "\u2b21 work +base +net \u00b7 Haiku 4.5\nown-line\nproject-line\n"
+  );
+  // The wrapped commands get Claude Code's JSON on stdin, like a normal status line.
+  assert.equal(
+    run({ chain: ["node -e \"process.stdin.on('data',d=>process.stdout.write(JSON.parse(d).model.id))\""], kits: [], profile: "p" }, status),
+    "\u2b21 p \u00b7 Haiku 4.5\nm\nproject-line\n"
+  );
+  // A failing line, a missing model, and a line that is ccr-statusline itself (no recursion) never break the segment.
+  assert.equal(run({ chain: ["exit 3", "node x ccr-statusline y"], kits: ["k"], profile: "p" }, ""), "\u2b21 p +k\nproject-line\n");
+  assert.equal(execFileSync(process.execPath, [runtimeFile, "ccr-statusline", path.join(dir, "missing.json")], { cwd: dir, encoding: "utf8", input: "{}" }), "\u2b21 ccr\n");
+});
+
 test("Claude Code wrapper preserves an explicit model argument", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
   const runtimeFile = writeRuntimeScript(dir);

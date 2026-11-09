@@ -1566,7 +1566,11 @@ function writeClaudeCodeWrapper(
   const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
   const file = path.join(binDir, claudeCodeWrapperFilename(profile));
   // Kits are rebuilt whenever the profile is applied; the runtime reads the flags file at launch.
-  const kitArgsFile = writeKitLaunchArgs(profile.id || profile.name || profile.agent, profile.kits).file;
+  const kitArgsFile = writeKitLaunchArgs(profile.id || profile.name || profile.agent, profile.kits, undefined, {
+    chain: profileStatusLineChain(profile),
+    command: statusLineRuntimeCommand(runtimeFile),
+    profileName: profile.name || profile.id || "Claude Code"
+  }).file;
   const content = process.platform === "win32"
     ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, auth, mcpConfigFile, kitArgsFile)
     : claudeCodeWrapperShellScript(config, profile, runtimeFile, auth, mcpConfigFile, kitArgsFile);
@@ -1575,6 +1579,23 @@ function writeClaudeCodeWrapper(
     changed: writeResult.changed || runtimeResult.changed,
     file
   };
+}
+
+/** The profile's own status line command, so the kit segment can sit above it. */
+function profileStatusLineChain(profile: ProfileConfig): string[] {
+  const statusLine = profile.claudeSettings?.statusLine;
+  const command = typeof statusLine === "object" && statusLine !== null ? (statusLine as { command?: unknown }).command : undefined;
+  return typeof command === "string" && command.trim() ? [command] : [];
+}
+
+/** Shell command that runs the wrapper runtime with this process's own Node (or Electron-as-Node). */
+function statusLineRuntimeCommand(runtimeFile: string): string {
+  const quote = (value: string) => (process.platform === "win32" ? `"${value}"` : shellQuote(value));
+  const electron = Boolean(process.versions.electron);
+  if (process.platform === "win32") {
+    return `${electron ? "set ELECTRON_RUN_AS_NODE=1&& " : ""}${quote(process.execPath)} ${quote(runtimeFile)}`;
+  }
+  return `${electron ? "ELECTRON_RUN_AS_NODE=1 " : ""}${quote(process.execPath)} ${quote(runtimeFile)}`;
 }
 
 function claudeCodeWrapperFilename(profile: ProfileConfig): string {

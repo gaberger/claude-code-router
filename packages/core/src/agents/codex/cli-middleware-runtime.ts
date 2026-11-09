@@ -103,6 +103,10 @@ async function main() {
     await runOpenCodeBotWorker(args);
     return;
   }
+  if (args[0] === "ccr-statusline") {
+    runKitStatusLine(args.slice(1));
+    return;
+  }
   if (process.env.CCR_CLAUDE_CODE_BOT_WORKER === "1" || args[0] === "claude-bot-worker") {
     await runClaudeCodeBotWorker(args);
     return;
@@ -120,6 +124,63 @@ async function main() {
     return;
   }
   await runCodexCliMiddleware(args.length === 0 ? defaultCodexArgs() : args);
+}
+
+// Claude Code status line for a profile with kits: "<hex> profile +kit +kit . model",
+// then the profile's own status line, then the project's, each on its own lines.
+// argv[0] is a JSON config file written by the profile ({ profile, kits, chain }).
+function runKitStatusLine(args) {
+  let config = {};
+  try {
+    config = JSON.parse(fs.readFileSync(args[0], "utf8"));
+  } catch (error) {
+    config = {};
+  }
+  let stdinText = "";
+  try {
+    stdinText = fs.readFileSync(0, "utf8");
+  } catch (error) {
+    stdinText = "";
+  }
+  let model = "";
+  try {
+    const status = JSON.parse(stdinText || "{}");
+    model = (status.model && (status.model.display_name || status.model.id)) || "";
+  } catch (error) {
+    model = "";
+  }
+  const kits = Array.isArray(config.kits) ? config.kits : [];
+  const lines = ["\u2b21 " + (config.profile || "ccr") + kits.map((kit) => " +" + kit).join("") + (model ? " \u00b7 " + model : "")];
+  const chain = (Array.isArray(config.chain) ? config.chain : []).concat(projectStatusLineCommands());
+  for (const command of chain) {
+    if (typeof command !== "string" || !command || command.indexOf("ccr-statusline") >= 0) {
+      continue;
+    }
+    try {
+      const result = childProcess.spawnSync(command, { encoding: "utf8", input: stdinText, shell: true, timeout: 3000 });
+      const text = String(result.stdout || "").replace(/\s+$/, "");
+      if (text) {
+        lines.push(text);
+      }
+    } catch (error) {
+      // A broken status line must not stop the next one.
+    }
+  }
+  process.stdout.write(lines.join("\n") + "\n");
+}
+
+function projectStatusLineCommands() {
+  for (const name of ["settings.local.json", "settings.json"]) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(path.join(process.cwd(), ".claude", name), "utf8"));
+      if (settings && settings.statusLine && typeof settings.statusLine.command === "string") {
+        return [settings.statusLine.command];
+      }
+    } catch (error) {
+      // No such file, or not JSON: try the next one.
+    }
+  }
+  return [];
 }
 
 function directProfileDispatchArgs(args) {

@@ -55,3 +55,20 @@ test("permissions kept in a profile's claudeSettings survive the config parser (
   assert.deepEqual(profile.claudeSettings.permissions, { allow: ["Read", "Bash(git:*)"], defaultMode: "acceptEdits" });
   assert.deepEqual(Object.keys(profile.claudeSettings), ["model", "permissions"]);
 });
+
+test("a status line option adds --settings that runs the runtime with the profile, kits and the profile's own line", () => withRoot((root) => {
+  write(path.join(root, "library", "skills", "find", "SKILL.md"));
+  createKit(root, "net"); useEntries(root, "net", ["skills/find"]);
+
+  const without = JSON.parse(readFileSync(writeKitLaunchArgs("p", ["net"], root).file, "utf8"));
+  assert.equal(without.includes("--settings"), false, "no status line unless asked for");
+
+  const { file } = writeKitLaunchArgs("p", ["net"], root, { chain: ["~/.claude/line.sh"], command: "node '/rt/runtime.js'", profileName: "My Profile" });
+  const args = JSON.parse(readFileSync(file, "utf8"));
+  const settingsFile = args[args.indexOf("--settings") + 1];
+  const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+  assert.equal(settings.statusLine.type, "command");
+  assert.match(settings.statusLine.command, /^node '\/rt\/runtime\.js' ccr-statusline '.*p\.statusline\.json'$/);
+  const config = JSON.parse(readFileSync(settings.statusLine.command.match(/'([^']*statusline\.json)'$/)[1], "utf8"));
+  assert.deepEqual(config, { chain: ["~/.claude/line.sh"], kits: ["net"], profile: "My Profile" });
+}));
