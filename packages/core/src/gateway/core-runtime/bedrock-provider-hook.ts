@@ -57,12 +57,14 @@ export function createGatewayPlugin(input: { config?: Record<string, unknown>; p
     })),
     streamHooks: providerNames.length === 0 ? [] : [{
       key: "module:ccr-bedrock:eventstream",
-      transformResponse: (hookInput: { providerName?: string; response: Response }) => {
+      // The gateway passes the upstream Response as `upstreamResponse` (GatewayPluginStreamHookInput).
+      transformResponse: (hookInput: { upstreamResponse: Response }) => {
         // Hooks are not scoped by provider here, so key off the wire format.
-        const contentType = hookInput.response.headers.get("content-type") ?? "";
+        const response = hookInput.upstreamResponse;
+        const contentType = response.headers.get("content-type") ?? "";
         return contentType.toLowerCase().startsWith(eventStreamContentType)
-          ? bedrockEventStreamResponse(hookInput.response)
-          : hookInput.response;
+          ? bedrockEventStreamResponse(response)
+          : response;
       }
     }]
   };

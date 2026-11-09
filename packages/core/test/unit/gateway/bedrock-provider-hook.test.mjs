@@ -172,7 +172,10 @@ test("plugin registers one request hook per bedrock provider and leaves other st
   assert.deepEqual(plugin.providerHooks.map((hook) => hook.providerName), ["bedrock-main"]);
 
   const json = new Response("{}", { headers: { "content-type": "application/json" } });
-  assert.equal(plugin.streamHooks[0].transformResponse({ response: json }), json);
+  assert.equal(plugin.streamHooks[0].transformResponse({ upstreamResponse: json }), json);
+  // The wire format is what selects a response: an eventstream is converted to SSE.
+  const stream = new Response("", { headers: { "content-type": "application/vnd.amazon.eventstream" } });
+  assert.equal(plugin.streamHooks[0].transformResponse({ upstreamResponse: stream }).headers.get("content-type"), "text/event-stream");
 
   assert.deepEqual(createGatewayPlugin({ config: {} }), { providerHooks: [], streamHooks: [] });
 });
